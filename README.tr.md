@@ -78,4 +78,4 @@ Hepsi bu. FlyoutLite, daha eski Windows 11 sürümlerinde, Windows 10'da, ARM64'
 
 ## Lisans
 
-[MIT](LICENSE) © 2026 Ahmed Cemil BİLGİN
+[MIT](LICENSE) © 2026 Ahmed Cemil Bilgin

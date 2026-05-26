@@ -78,4 +78,4 @@ That's it. FlyoutLite has not been tested on older Windows 11 builds, Windows 10
 
 ## License
 
-[MIT](LICENSE) © 2026 Ahmed Cemil BİLGİN
+[MIT](LICENSE) © 2026 Ahmed Cemil Bilgin
