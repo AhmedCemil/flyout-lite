@@ -5,14 +5,17 @@ use std::time::Duration;
 use windows::{
     core::*,
     Foundation::{TimeSpan, TypedEventHandler},
-    Media::Control::{
-        CurrentSessionChangedEventArgs,
-        GlobalSystemMediaTransportControlsSession,
-        GlobalSystemMediaTransportControlsSessionManager,
-        GlobalSystemMediaTransportControlsSessionPlaybackStatus,
-        MediaPropertiesChangedEventArgs,
-        PlaybackInfoChangedEventArgs,
-        TimelinePropertiesChangedEventArgs,
+    Media::{
+        Control::{
+            CurrentSessionChangedEventArgs,
+            GlobalSystemMediaTransportControlsSession,
+            GlobalSystemMediaTransportControlsSessionManager,
+            GlobalSystemMediaTransportControlsSessionPlaybackStatus,
+            MediaPropertiesChangedEventArgs,
+            PlaybackInfoChangedEventArgs,
+            TimelinePropertiesChangedEventArgs,
+        },
+        MediaPlaybackAutoRepeatMode,
     },
     Storage::Streams::{Buffer, DataReader, IRandomAccessStreamWithContentType, InputStreamOptions},
     Win32::{
@@ -200,6 +203,34 @@ fn refresh_playback(session: &GlobalSystemMediaTransportControlsSession) {
     let changed = prev != -1 && prev != (playing as i8);
 
     app::update_playing(playing);
+
+    let controls = info.Controls().ok();
+    let shuffle_supported = controls
+        .as_ref()
+        .and_then(|c| c.IsShuffleEnabled().ok())
+        .unwrap_or(false);
+    let repeat_supported = controls
+        .as_ref()
+        .and_then(|c| c.IsRepeatEnabled().ok())
+        .unwrap_or(false);
+
+    let shuffle_active = info
+        .IsShuffleActive()
+        .and_then(|r| r.Value())
+        .unwrap_or(false);
+    let repeat = info
+        .AutoRepeatMode()
+        .and_then(|r| r.Value())
+        .map(|m| match m {
+            MediaPlaybackAutoRepeatMode::Track => app::RepeatMode::Track,
+            MediaPlaybackAutoRepeatMode::List => app::RepeatMode::List,
+            _ => app::RepeatMode::None,
+        })
+        .unwrap_or(app::RepeatMode::None);
+
+    app::update_shuffle(shuffle_active, shuffle_supported);
+    app::update_repeat(repeat, repeat_supported);
+
     if changed {
         post_show_if_enabled();
     }
@@ -247,6 +278,37 @@ pub fn try_next() {
 pub fn try_prev() {
     if let Some(s) = current_session() {
         if let Ok(op) = s.TrySkipPreviousAsync() {
+            let _ = op.get();
+        }
+    }
+}
+
+pub fn try_toggle_shuffle() {
+    if let Some(s) = current_session() {
+        let active = s
+            .GetPlaybackInfo()
+            .and_then(|i| i.IsShuffleActive())
+            .and_then(|r| r.Value())
+            .unwrap_or(false);
+        if let Ok(op) = s.TryChangeShuffleActiveAsync(!active) {
+            let _ = op.get();
+        }
+    }
+}
+
+pub fn try_cycle_repeat() {
+    if let Some(s) = current_session() {
+        let current = s
+            .GetPlaybackInfo()
+            .and_then(|i| i.AutoRepeatMode())
+            .and_then(|r| r.Value())
+            .unwrap_or(MediaPlaybackAutoRepeatMode::None);
+        let next = match current {
+            MediaPlaybackAutoRepeatMode::None => MediaPlaybackAutoRepeatMode::List,
+            MediaPlaybackAutoRepeatMode::List => MediaPlaybackAutoRepeatMode::Track,
+            _ => MediaPlaybackAutoRepeatMode::None,
+        };
+        if let Ok(op) = s.TryChangeAutoRepeatModeAsync(next) {
             let _ = op.get();
         }
     }

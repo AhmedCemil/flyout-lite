@@ -504,7 +504,10 @@ unsafe fn render(_hwnd: HWND, s: &mut State) -> Result<()> {
     draw_text(ctx, &s.dwrite_factory, "Position", &s.label_format, &D2D_RECT_F {
         left: pad, top: y, right: w - pad, bottom: y + 18.0,
     }, &dim_brush, DWRITE_TEXT_ALIGNMENT_LEADING)?;
-    y += 22.0;
+    y += 18.0;
+    draw_text_wrap(ctx, &s.dwrite_factory, "Where the flyout appears on screen. Use Custom for exact pixel coordinates.", &s.small_format,
+        &D2D_RECT_F { left: pad, top: y, right: w - pad, bottom: y + 18.0 }, &dim_brush)?;
+    y += 18.0;
 
     // 3x3 anchor grid (preset cells, 6 presets in 2 rows of 3; 7th = Custom card below)
     let grid_left = pad;
@@ -581,7 +584,10 @@ unsafe fn render(_hwnd: HWND, s: &mut State) -> Result<()> {
     draw_text(ctx, &s.dwrite_factory, "Margin", &s.label_format,
         &D2D_RECT_F { left: pad, top: y, right: w - pad, bottom: y + 18.0 },
         &dim_brush, DWRITE_TEXT_ALIGNMENT_LEADING)?;
-    y += 22.0;
+    y += 18.0;
+    draw_text_wrap(ctx, &s.dwrite_factory, "Distance from the chosen anchor edge, in pixels.", &s.small_format,
+        &D2D_RECT_F { left: pad, top: y, right: w - pad, bottom: y + 18.0 }, &dim_brush)?;
+    y += 18.0;
 
     let row_r = D2D_RECT_F { left: pad, top: y, right: w - pad, bottom: y + 44.0 };
     draw_panel_static(ctx, &row_r, &panel_brush, &stroke_brush)?;
@@ -610,14 +616,20 @@ unsafe fn render(_hwnd: HWND, s: &mut State) -> Result<()> {
     draw_text(ctx, &s.dwrite_factory, "Behavior", &s.label_format,
         &D2D_RECT_F { left: pad, top: y, right: w - pad, bottom: y + 18.0 },
         &dim_brush, DWRITE_TEXT_ALIGNMENT_LEADING)?;
-    y += 22.0;
+    y += 18.0;
+    draw_text_wrap(ctx, &s.dwrite_factory, "When and how the flyout appears.", &s.small_format,
+        &D2D_RECT_F { left: pad, top: y, right: w - pad, bottom: y + 18.0 }, &dim_brush)?;
+    y += 18.0;
 
     // Hold ms row
-    let hold_r = D2D_RECT_F { left: pad, top: y, right: w - pad, bottom: y + 44.0 };
+    let hold_r = D2D_RECT_F { left: pad, top: y, right: w - pad, bottom: y + 60.0 };
     draw_panel_static(ctx, &hold_r, &panel_brush, &stroke_brush)?;
     draw_text(ctx, &s.dwrite_factory, "Visible duration", &s.body_format,
-        &D2D_RECT_F { left: hold_r.left + 16.0, top: hold_r.top + 13.0, right: hold_r.right - 130.0, bottom: hold_r.bottom },
+        &D2D_RECT_F { left: hold_r.left + 16.0, top: hold_r.top + 8.0, right: hold_r.right - 130.0, bottom: hold_r.top + 28.0 },
         &text_brush, DWRITE_TEXT_ALIGNMENT_LEADING)?;
+    draw_text_wrap(ctx, &s.dwrite_factory, "How long the flyout stays on screen (500\u{2013}30000 ms).", &s.small_format,
+        &D2D_RECT_F { left: hold_r.left + 16.0, top: hold_r.top + 28.0, right: hold_r.right - 130.0, bottom: hold_r.bottom - 6.0 },
+        &dim_brush)?;
     let r_hold = D2D_RECT_F {
         left: hold_r.right - 16.0 - 100.0,
         top: hold_r.top + (hold_r.bottom - hold_r.top) / 2.0 - field_h / 2.0,
@@ -626,52 +638,34 @@ unsafe fn render(_hwnd: HWND, s: &mut State) -> Result<()> {
     };
     draw_field(ctx, &s.dwrite_factory, &s.body_format, &r_hold, &format!("{} ms", s.cfg.hold_ms), s.focus == Field::Hold, &pal, &text_brush)?;
     s.hits.field_hold = r_hold;
-    y += 50.0;
+    y += 66.0;
 
     // Compact toggle
-    let compact_r = D2D_RECT_F { left: pad, top: y, right: w - pad, bottom: y + 44.0 };
-    draw_panel_static(ctx, &compact_r, &panel_brush, &stroke_brush)?;
-    draw_text(ctx, &s.dwrite_factory, "Compact layout", &s.body_format,
-        &D2D_RECT_F { left: compact_r.left + 16.0, top: compact_r.top + 13.0, right: compact_r.right - 80.0, bottom: compact_r.bottom },
-        &text_brush, DWRITE_TEXT_ALIGNMENT_LEADING)?;
-    draw_toggle(ctx, &D2D_RECT_F {
-        left: compact_r.right - 60.0,
-        top: compact_r.top + 12.0,
-        right: compact_r.right - 16.0,
-        bottom: compact_r.bottom - 12.0,
-    }, s.cfg.compact, &pal)?;
+    let compact_r = D2D_RECT_F { left: pad, top: y, right: w - pad, bottom: y + 72.0 };
+    draw_two_line_toggle(ctx, &s.dwrite_factory, &s.body_format, &s.small_format,
+        &compact_r, "Compact layout",
+        "Smaller card with just album art, title, and artist \u{2014} no controls or seek bar.",
+        s.cfg.compact, &pal, &panel_brush, &stroke_brush, &text_brush, &dim_brush)?;
     s.hits.toggle_compact = compact_r;
-    y += 50.0;
+    y += 78.0;
 
     // Show on track / play-pause change
-    let session_r = D2D_RECT_F { left: pad, top: y, right: w - pad, bottom: y + 44.0 };
-    draw_panel_static(ctx, &session_r, &panel_brush, &stroke_brush)?;
-    draw_text(ctx, &s.dwrite_factory, "Show on track change", &s.body_format,
-        &D2D_RECT_F { left: session_r.left + 16.0, top: session_r.top + 13.0, right: session_r.right - 80.0, bottom: session_r.bottom },
-        &text_brush, DWRITE_TEXT_ALIGNMENT_LEADING)?;
-    draw_toggle(ctx, &D2D_RECT_F {
-        left: session_r.right - 60.0,
-        top: session_r.top + 12.0,
-        right: session_r.right - 16.0,
-        bottom: session_r.bottom - 12.0,
-    }, s.cfg.show_on_session_change, &pal)?;
+    let session_r = D2D_RECT_F { left: pad, top: y, right: w - pad, bottom: y + 72.0 };
+    draw_two_line_toggle(ctx, &s.dwrite_factory, &s.body_format, &s.small_format,
+        &session_r, "Show on track change",
+        "Pop the flyout when a player switches track or toggles play/pause, even without a media key.",
+        s.cfg.show_on_session_change, &pal, &panel_brush, &stroke_brush, &text_brush, &dim_brush)?;
     s.hits.toggle_session = session_r;
-    y += 50.0;
+    y += 78.0;
 
     // Startup toggle
-    let startup_r = D2D_RECT_F { left: pad, top: y, right: w - pad, bottom: y + 44.0 };
-    draw_panel_static(ctx, &startup_r, &panel_brush, &stroke_brush)?;
-    draw_text(ctx, &s.dwrite_factory, "Run at startup", &s.body_format,
-        &D2D_RECT_F { left: startup_r.left + 16.0, top: startup_r.top + 13.0, right: startup_r.right - 80.0, bottom: startup_r.bottom },
-        &text_brush, DWRITE_TEXT_ALIGNMENT_LEADING)?;
-    draw_toggle(ctx, &D2D_RECT_F {
-        left: startup_r.right - 60.0,
-        top: startup_r.top + 12.0,
-        right: startup_r.right - 16.0,
-        bottom: startup_r.bottom - 12.0,
-    }, s.startup_enabled, &pal)?;
+    let startup_r = D2D_RECT_F { left: pad, top: y, right: w - pad, bottom: y + 72.0 };
+    draw_two_line_toggle(ctx, &s.dwrite_factory, &s.body_format, &s.small_format,
+        &startup_r, "Run at startup",
+        "Launch FlyoutLite automatically when you sign in to Windows.",
+        s.startup_enabled, &pal, &panel_brush, &stroke_brush, &text_brush, &dim_brush)?;
     s.hits.toggle_startup = startup_r;
-    y += 60.0;
+    y += 76.0;
 
     // Record total content height for scrollbar/clamp math.
     s.content_h = y;
@@ -830,6 +824,42 @@ unsafe fn draw_toggle(ctx: &ID2D1DeviceContext, rect: &D2D_RECT_F, on: bool, pal
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
+unsafe fn draw_two_line_toggle(
+    ctx: &ID2D1DeviceContext,
+    dw: &IDWriteFactory,
+    title_fmt: &IDWriteTextFormat,
+    desc_fmt: &IDWriteTextFormat,
+    rect: &D2D_RECT_F,
+    title: &str,
+    desc: &str,
+    on: bool,
+    pal: &Pal,
+    panel: &ID2D1SolidColorBrush,
+    stroke: &ID2D1SolidColorBrush,
+    text_brush: &ID2D1SolidColorBrush,
+    dim_brush: &ID2D1SolidColorBrush,
+) -> Result<()> {
+    draw_panel_static(ctx, rect, panel, stroke)?;
+    let toggle_w = 44.0;
+    let toggle_h = 22.0;
+    let toggle_r = D2D_RECT_F {
+        left: rect.right - 16.0 - toggle_w,
+        top: (rect.top + rect.bottom) / 2.0 - toggle_h / 2.0,
+        right: rect.right - 16.0,
+        bottom: (rect.top + rect.bottom) / 2.0 + toggle_h / 2.0,
+    };
+    draw_toggle(ctx, &toggle_r, on, pal)?;
+    let text_right = toggle_r.left - 12.0;
+    draw_text(ctx, dw, title, title_fmt,
+        &D2D_RECT_F { left: rect.left + 16.0, top: rect.top + 8.0, right: text_right, bottom: rect.top + 28.0 },
+        text_brush, DWRITE_TEXT_ALIGNMENT_LEADING)?;
+    draw_text_wrap(ctx, dw, desc, desc_fmt,
+        &D2D_RECT_F { left: rect.left + 16.0, top: rect.top + 28.0, right: text_right, bottom: rect.bottom - 6.0 },
+        dim_brush)?;
+    Ok(())
+}
+
 unsafe fn draw_field(
     ctx: &ID2D1DeviceContext,
     dw: &IDWriteFactory,
@@ -901,6 +931,28 @@ unsafe fn draw_text(
     layout.SetTextAlignment(align)?;
     layout.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER)?;
     layout.SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP)?;
+    ctx.DrawTextLayout(
+        Vector2 { X: rect.left, Y: rect.top },
+        &layout,
+        brush,
+        D2D1_DRAW_TEXT_OPTIONS_CLIP,
+    );
+    Ok(())
+}
+
+unsafe fn draw_text_wrap(
+    ctx: &ID2D1DeviceContext,
+    factory: &IDWriteFactory,
+    text: &str,
+    format: &IDWriteTextFormat,
+    rect: &D2D_RECT_F,
+    brush: &ID2D1SolidColorBrush,
+) -> Result<()> {
+    let wide: Vec<u16> = text.encode_utf16().collect();
+    let layout = factory.CreateTextLayout(&wide, format, rect.right - rect.left, rect.bottom - rect.top)?;
+    layout.SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING)?;
+    layout.SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_NEAR)?;
+    layout.SetWordWrapping(DWRITE_WORD_WRAPPING_WRAP)?;
     ctx.DrawTextLayout(
         Vector2 { X: rect.left, Y: rect.top },
         &layout,

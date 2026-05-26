@@ -39,9 +39,18 @@ pub struct Renderer {
     artist_format: IDWriteTextFormat,
     time_format: IDWriteTextFormat,
     icon_format: IDWriteTextFormat,
+    small_icon_format: IDWriteTextFormat,
 
     album_bitmap: Option<ID2D1Bitmap>,
     album_key: Option<String>,
+}
+
+#[derive(Clone, Copy, Default)]
+pub struct ExtraState {
+    pub shuffle_active: bool,
+    pub shuffle_supported: bool,
+    pub repeat_mode: crate::app::RepeatMode,
+    pub repeat_supported: bool,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -50,6 +59,10 @@ pub struct HitRegions {
     pub play_pause: D2D_RECT_F,
     pub next: D2D_RECT_F,
     pub seek_track: D2D_RECT_F,
+    pub shuffle: D2D_RECT_F,
+    pub shuffle_enabled: bool,
+    pub repeat: D2D_RECT_F,
+    pub repeat_enabled: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -93,6 +106,10 @@ fn rgba(r: u8, g: u8, b: u8, a: u8) -> D2D1_COLOR_F {
         b: b as f32 / 255.0,
         a: a as f32 / 255.0,
     }
+}
+
+fn with_alpha(c: &D2D1_COLOR_F, alpha_mul: f32) -> D2D1_COLOR_F {
+    D2D1_COLOR_F { r: c.r, g: c.g, b: c.b, a: c.a * alpha_mul }
 }
 
 impl Renderer {
@@ -162,6 +179,7 @@ impl Renderer {
         let artist_format = create_text_format(&dwrite_factory, "Segoe UI Variable Display", 13.0, false)?;
         let time_format = create_text_format(&dwrite_factory, "Segoe UI Variable Small", 11.0, false)?;
         let icon_format = create_text_format(&dwrite_factory, "Segoe Fluent Icons", 14.0, false)?;
+        let small_icon_format = create_text_format(&dwrite_factory, "Segoe Fluent Icons", 11.0, false)?;
 
         Ok(Self {
             d2d_factory,
@@ -178,6 +196,7 @@ impl Renderer {
             artist_format,
             time_format,
             icon_format,
+            small_icon_format,
             album_bitmap: None,
             album_key: None,
         })
@@ -255,6 +274,7 @@ impl Renderer {
         duration_secs: f64,
         seekbar_enabled: bool,
         compact: bool,
+        extra: ExtraState,
     ) -> Result<HitRegions> {
         if compact {
             return self.render_compact(theme, track_title, track_artist);
@@ -365,21 +385,33 @@ impl Renderer {
             self.dwrite_factory.clone(),
         )?;
 
-        // Transport buttons (right side of content row)
+        // Transport buttons (right side of content row): [shuffle] [prev] [play/pause] [next] [repeat]
         let btn_y = 60.0;
         let btn_h = 32.0;
         let big_btn = 36.0;
         let small_btn = 28.0;
+        let tiny_btn = 24.0;
 
-        let next_x = w - 12.0 - small_btn;
-        let play_x = next_x - 6.0 - big_btn;
-        let prev_x = play_x - 6.0 - small_btn;
+        let repeat_x = w - 12.0 - tiny_btn;
+        let next_x = repeat_x - 4.0 - small_btn;
+        let play_x = next_x - 4.0 - big_btn;
+        let prev_x = play_x - 4.0 - small_btn;
+        let shuffle_x = prev_x - 4.0 - tiny_btn;
 
+        let tiny_y = btn_y + (big_btn - tiny_btn) / 2.0;
+        let small_y = btn_y + (big_btn - btn_h) / 2.0;
+
+        let shuffle_rect = D2D_RECT_F {
+            left: shuffle_x,
+            top: tiny_y,
+            right: shuffle_x + tiny_btn,
+            bottom: tiny_y + tiny_btn,
+        };
         let prev_rect = D2D_RECT_F {
             left: prev_x,
-            top: btn_y + (big_btn - btn_h) / 2.0,
+            top: small_y,
             right: prev_x + small_btn,
-            bottom: btn_y + (big_btn - btn_h) / 2.0 + btn_h,
+            bottom: small_y + btn_h,
         };
         let play_rect = D2D_RECT_F {
             left: play_x,
@@ -389,9 +421,15 @@ impl Renderer {
         };
         let next_rect = D2D_RECT_F {
             left: next_x,
-            top: btn_y + (big_btn - btn_h) / 2.0,
+            top: small_y,
             right: next_x + small_btn,
-            bottom: btn_y + (big_btn - btn_h) / 2.0 + btn_h,
+            bottom: small_y + btn_h,
+        };
+        let repeat_rect = D2D_RECT_F {
+            left: repeat_x,
+            top: tiny_y,
+            right: repeat_x + tiny_btn,
+            bottom: tiny_y + tiny_btn,
         };
 
         // Transparent backgrounds for prev/next, accent-filled for play-pause
@@ -434,11 +472,48 @@ impl Renderer {
             self.dwrite_factory.clone(),
         )?;
 
+        // Shuffle (E8B1) — accent when active, dim when unsupported.
+        let shuffle_color = if !extra.shuffle_supported {
+            with_alpha(&theme.text_dim, 0.4)
+        } else if extra.shuffle_active {
+            theme.accent
+        } else {
+            theme.text_dim
+        };
+        draw_text(
+            ctx,
+            "\u{E8B1}",
+            &self.small_icon_format,
+            &shuffle_rect,
+            &shuffle_color,
+            self.dwrite_factory.clone(),
+        )?;
+
+        // Repeat (E1CD all, E1CC one) — accent when on, dim when unsupported.
+        let (repeat_glyph, repeat_color) = match (extra.repeat_supported, extra.repeat_mode) {
+            (false, _) => ("\u{E1CD}", with_alpha(&theme.text_dim, 0.4)),
+            (true, crate::app::RepeatMode::None) => ("\u{E1CD}", theme.text_dim),
+            (true, crate::app::RepeatMode::List) => ("\u{E1CD}", theme.accent),
+            (true, crate::app::RepeatMode::Track) => ("\u{E1CC}", theme.accent),
+        };
+        draw_text(
+            ctx,
+            repeat_glyph,
+            &self.small_icon_format,
+            &repeat_rect,
+            &repeat_color,
+            self.dwrite_factory.clone(),
+        )?;
+
         let mut hits = HitRegions {
             prev: prev_rect,
             play_pause: play_rect,
             next: next_rect,
             seek_track: D2D_RECT_F::default(),
+            shuffle: shuffle_rect,
+            shuffle_enabled: extra.shuffle_supported,
+            repeat: repeat_rect,
+            repeat_enabled: extra.repeat_supported,
         };
 
         // Seek bar

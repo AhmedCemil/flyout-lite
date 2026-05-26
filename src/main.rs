@@ -18,6 +18,7 @@ use windows::{
         Foundation::*,
         System::Com::*,
         System::LibraryLoader::GetModuleHandleW,
+        System::Threading::CreateMutexW,
         UI::HiDpi::*,
         UI::WindowsAndMessaging::*,
     },
@@ -25,6 +26,15 @@ use windows::{
 
 fn main() -> Result<()> {
     unsafe {
+        // Single-instance: if another FlyoutLite is already running, exit silently.
+        // The mutex handle is intentionally leaked — it lives for the process lifetime.
+        let mutex = CreateMutexW(None, false, w!("Local\\FlyoutLite_SingleInstance"))?;
+        let already_running = GetLastError() == ERROR_ALREADY_EXISTS;
+        if already_running {
+            return Ok(());
+        }
+        let _ = mutex;
+
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         CoInitializeEx(None, COINIT_MULTITHREADED).ok()?;
 

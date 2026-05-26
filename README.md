@@ -34,12 +34,14 @@ FlyoutLite **does not contain any code from FluentFlyout or ModernFlyouts.** Dif
 ## Features
 
 - Album art, track title, artist
-- Previous / Play-Pause / Next buttons
+- Shuffle / Previous / Play-Pause / Next / Repeat buttons (shuffle and repeat grey out when the active player doesn't expose them through SMTC)
 - Seek bar with click-to-scrub
 - Mica backdrop, rounded corners, accent color, follows Windows light/dark theme
+- Pops up on media-key press **and** when an app changes track or toggles play/pause from inside its own window (toggle in Settings)
 - Tray icon with right-click menu (Settings, Run at startup, Quit)
-- Custom-painted Settings window with 9 anchor positions, custom X/Y, margin tuning, visible-duration control, compact mode, and run-at-startup toggle
+- Custom-painted Settings window with 9 anchor positions, custom X/Y, margin tuning, visible-duration control, compact mode, "show on track change" toggle, and run-at-startup toggle
 - **Compact mode** — a 280×64 mini card with just art + title + artist, no controls
+- Single-instance — re-launching the exe doesn't spawn a duplicate
 - Does not interfere with media keys (always calls `CallNextHookEx`)
 - Hides automatically in exclusive-fullscreen apps
 - Run at startup (HKCU `Run` key, no service, no scheduled task)

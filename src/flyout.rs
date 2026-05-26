@@ -263,6 +263,12 @@ fn render_frame() {
     STATE.with(|cell| {
         if let Some(state) = cell.borrow_mut().as_mut() {
             unsafe {
+                let extra = crate::render::ExtraState {
+                    shuffle_active: track.shuffle_active,
+                    shuffle_supported: track.shuffle_supported,
+                    repeat_mode: track.repeat_mode,
+                    repeat_supported: track.repeat_supported,
+                };
                 if let Ok(hits) = state.renderer.render(
                     &state.theme,
                     &track.title,
@@ -272,6 +278,7 @@ fn render_frame() {
                     track.duration_secs,
                     seekbar_enabled,
                     cfg.compact,
+                    extra,
                 ) {
                     state.hits = hits;
                 }
@@ -453,6 +460,12 @@ unsafe fn handle_click(hwnd: HWND, x: f32, y: f32) {
         if point_in_rect(x, y, &s.hits.next) {
             return Some("next");
         }
+        if s.hits.shuffle_enabled && point_in_rect(x, y, &s.hits.shuffle) {
+            return Some("shuffle");
+        }
+        if s.hits.repeat_enabled && point_in_rect(x, y, &s.hits.repeat) {
+            return Some("repeat");
+        }
         if point_in_rect(x, y, &s.hits.seek_track) {
             return Some("seek");
         }
@@ -463,6 +476,8 @@ unsafe fn handle_click(hwnd: HWND, x: f32, y: f32) {
         Some("prev") => media::try_prev(),
         Some("play_pause") => media::try_play_pause(),
         Some("next") => media::try_next(),
+        Some("shuffle") => media::try_toggle_shuffle(),
+        Some("repeat") => media::try_cycle_repeat(),
         Some("seek") => {
             hit_seek = true;
             STATE.with(|cell| {

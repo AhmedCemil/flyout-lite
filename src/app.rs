@@ -1,5 +1,13 @@
 use std::sync::{Mutex, OnceLock};
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum RepeatMode {
+    #[default]
+    None,
+    Track,
+    List,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct TrackInfo {
     pub title: String,
@@ -11,6 +19,10 @@ pub struct TrackInfo {
     pub thumbnail_bytes: Vec<u8>,
     pub has_thumbnail: bool,
     pub seekable: bool,
+    pub shuffle_active: bool,
+    pub shuffle_supported: bool,
+    pub repeat_mode: RepeatMode,
+    pub repeat_supported: bool,
 }
 
 static STATE: OnceLock<Mutex<TrackInfo>> = OnceLock::new();
@@ -53,6 +65,20 @@ pub fn clear_thumbnail() {
         s.thumbnail_key.clear();
         s.thumbnail_bytes.clear();
         s.has_thumbnail = false;
+    }
+}
+
+pub fn update_shuffle(active: bool, supported: bool) {
+    if let Ok(mut s) = state().lock() {
+        s.shuffle_active = active;
+        s.shuffle_supported = supported;
+    }
+}
+
+pub fn update_repeat(mode: RepeatMode, supported: bool) {
+    if let Ok(mut s) = state().lock() {
+        s.repeat_mode = mode;
+        s.repeat_supported = supported;
     }
 }
 
