@@ -71,6 +71,7 @@ enum Field {
 
 const FOOTER_H: f32 = 70.0;
 const TITLE_H: f32 = 56.0;
+const TIMER_SAVED_FLASH: usize = 1;
 
 struct State {
     // D2D pipeline
@@ -97,7 +98,8 @@ struct State {
     cfg: Config,
     hits: Hits,
     focus: Field,
-    saved_flash: u32, // frames left to flash the Save button
+    focus_fresh: bool,
+    saved_until: Option<std::time::Instant>,
     startup_enabled: bool,
     scroll_y: f32,
     content_h: f32,
@@ -193,7 +195,8 @@ unsafe fn create() -> Result<()> {
             cfg: config::get(),
             hits: Hits::default(),
             focus: Field::None,
-            saved_flash: 0,
+            focus_fresh: false,
+            saved_until: None,
             startup_enabled: startup::is_enabled(),
             scroll_y: 0.0,
             content_h: 0.0,
@@ -720,11 +723,10 @@ unsafe fn render(_hwnd: HWND, s: &mut State) -> Result<()> {
     s.hits.btn_close = close_r;
 
     let save_r = D2D_RECT_F { left: close_r.left - 12.0 - btn_w, top: by, right: close_r.left - 12.0, bottom: by + btn_h };
-    let flash = s.saved_flash > 0;
+    let flash = s.saved_until.map(|t| std::time::Instant::now() < t).unwrap_or(false);
     let save_label = if flash { "Saved" } else { "Save" };
     draw_button(ctx, &s.dwrite_factory, &s.body_format, &save_r, save_label, true, &pal, &accent_brush, &accent_brush)?;
     s.hits.btn_save = save_r;
-    if s.saved_flash > 0 { s.saved_flash -= 1; }
 
     ctx.EndDraw(None, None)?;
     s.swapchain.Present(1, DXGI_PRESENT::default()).ok()?;
@@ -995,6 +997,7 @@ unsafe fn handle_click(hwnd: HWND, x: f32, y: f32) {
                     s.cfg.anchor = index_to_anchor(i);
                 }
             }
+            let prev_focus = s.focus;
             if hit(x, cy, &s.hits.field_mx) {
                 s.focus = Field::Mx;
             } else if hit(x, cy, &s.hits.field_my) {
@@ -1010,6 +1013,7 @@ unsafe fn handle_click(hwnd: HWND, x: f32, y: f32) {
             } else {
                 s.focus = Field::None;
             }
+            s.focus_fresh = s.focus != Field::None && s.focus != prev_focus;
             if hit(x, cy, &s.hits.toggle_compact) {
                 s.cfg.compact = !s.cfg.compact;
             }
@@ -1035,6 +1039,16 @@ unsafe fn handle_click(hwnd: HWND, x: f32, y: f32) {
             }
         });
     }
+    if do_preview || do_save {
+        // Snap mid-edit values into the supported range before persisting.
+        STATE.with(|cell| {
+            if let Some(s) = cell.borrow_mut().as_mut() {
+                s.cfg.hold_ms = s.cfg.hold_ms.clamp(500, 30_000);
+                s.focus = Field::None;
+                s.focus_fresh = false;
+            }
+        });
+    }
     if do_preview {
         let cfg = STATE.with(|cell| cell.borrow().as_ref().map(|s| s.cfg).unwrap_or_default());
         config::set(cfg);
@@ -1045,9 +1059,11 @@ unsafe fn handle_click(hwnd: HWND, x: f32, y: f32) {
         config::set(cfg);
         STATE.with(|cell| {
             if let Some(s) = cell.borrow_mut().as_mut() {
-                s.saved_flash = 60; // ~1 second at 60fps repaints
+                s.saved_until = Some(std::time::Instant::now() + std::time::Duration::from_secs(2));
             }
         });
+        // Repaint the button back to "Save" after the flash expires.
+        SetTimer(Some(hwnd), TIMER_SAVED_FLASH, 2050, None);
     }
     if do_close {
         let _ = DestroyWindow(hwnd);
@@ -1065,13 +1081,20 @@ unsafe fn handle_char(hwnd: HWND, ch: u32) {
             if s.focus == Field::None {
                 return;
             }
-            let cur = match s.focus {
-                Field::Mx => s.cfg.margin_x.to_string(),
-                Field::My => s.cfg.margin_y.to_string(),
-                Field::Cx => s.cfg.custom_x.to_string(),
-                Field::Cy => s.cfg.custom_y.to_string(),
-                Field::Hold => s.cfg.hold_ms.to_string(),
-                Field::None => return,
+            // On a fresh focus the next keystroke replaces the current value
+            // instead of appending to it — matches what users expect from a
+            // text field they just clicked into.
+            let cur = if s.focus_fresh {
+                String::new()
+            } else {
+                match s.focus {
+                    Field::Mx => s.cfg.margin_x.to_string(),
+                    Field::My => s.cfg.margin_y.to_string(),
+                    Field::Cx => s.cfg.custom_x.to_string(),
+                    Field::Cy => s.cfg.custom_y.to_string(),
+                    Field::Hold => s.cfg.hold_ms.to_string(),
+                    Field::None => return,
+                }
             };
             let mut buf = cur;
             if c == '\u{8}' {
@@ -1081,13 +1104,18 @@ unsafe fn handle_char(hwnd: HWND, ch: u32) {
             } else {
                 return;
             }
+            s.focus_fresh = false;
             match s.focus {
                 Field::Mx => s.cfg.margin_x = buf.parse().unwrap_or(0),
                 Field::My => s.cfg.margin_y = buf.parse().unwrap_or(0),
                 Field::Cx => s.cfg.custom_x = buf.parse().unwrap_or(0),
                 Field::Cy => s.cfg.custom_y = buf.parse().unwrap_or(0),
                 Field::Hold => {
-                    s.cfg.hold_ms = buf.parse::<u32>().unwrap_or(500).max(500).min(30_000);
+                    // Don't clamp on every keystroke — that prevents typing a
+                    // value like "5000" because the partial "5" gets snapped to
+                    // 500 mid-edit. Clamp only when the field loses focus or
+                    // the user clicks Save (handled elsewhere).
+                    s.cfg.hold_ms = buf.parse::<u32>().unwrap_or(0);
                 }
                 Field::None => {}
             }
@@ -1103,6 +1131,16 @@ extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM
                 let x = (lparam.0 & 0xFFFF) as i16 as f32;
                 let y = ((lparam.0 >> 16) & 0xFFFF) as i16 as f32;
                 handle_click(hwnd, x, y);
+                LRESULT(0)
+            }
+            WM_TIMER if wparam.0 == TIMER_SAVED_FLASH => {
+                let _ = KillTimer(Some(hwnd), TIMER_SAVED_FLASH);
+                STATE.with(|cell| {
+                    if let Some(s) = cell.borrow_mut().as_mut() {
+                        s.saved_until = None;
+                    }
+                });
+                paint(hwnd);
                 LRESULT(0)
             }
             WM_MOUSEWHEEL => {
