@@ -52,6 +52,7 @@ struct Hits {
     field_cy: D2D_RECT_F,
     field_hold: D2D_RECT_F,
     toggle_compact: D2D_RECT_F,
+    toggle_session: D2D_RECT_F,
     toggle_startup: D2D_RECT_F,
     btn_preview: D2D_RECT_F,
     btn_save: D2D_RECT_F,
@@ -642,6 +643,21 @@ unsafe fn render(_hwnd: HWND, s: &mut State) -> Result<()> {
     s.hits.toggle_compact = compact_r;
     y += 50.0;
 
+    // Show on track / play-pause change
+    let session_r = D2D_RECT_F { left: pad, top: y, right: w - pad, bottom: y + 44.0 };
+    draw_panel_static(ctx, &session_r, &panel_brush, &stroke_brush)?;
+    draw_text(ctx, &s.dwrite_factory, "Show on track change", &s.body_format,
+        &D2D_RECT_F { left: session_r.left + 16.0, top: session_r.top + 13.0, right: session_r.right - 80.0, bottom: session_r.bottom },
+        &text_brush, DWRITE_TEXT_ALIGNMENT_LEADING)?;
+    draw_toggle(ctx, &D2D_RECT_F {
+        left: session_r.right - 60.0,
+        top: session_r.top + 12.0,
+        right: session_r.right - 16.0,
+        bottom: session_r.bottom - 12.0,
+    }, s.cfg.show_on_session_change, &pal)?;
+    s.hits.toggle_session = session_r;
+    y += 50.0;
+
     // Startup toggle
     let startup_r = D2D_RECT_F { left: pad, top: y, right: w - pad, bottom: y + 44.0 };
     draw_panel_static(ctx, &startup_r, &panel_brush, &stroke_brush)?;
@@ -944,6 +960,9 @@ unsafe fn handle_click(hwnd: HWND, x: f32, y: f32) {
             }
             if hit(x, cy, &s.hits.toggle_compact) {
                 s.cfg.compact = !s.cfg.compact;
+            }
+            if hit(x, cy, &s.hits.toggle_session) {
+                s.cfg.show_on_session_change = !s.cfg.show_on_session_change;
             }
             if hit(x, cy, &s.hits.toggle_startup) {
                 toggle_startup_now = true;

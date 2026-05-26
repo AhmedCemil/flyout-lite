@@ -30,6 +30,7 @@ fn main() -> Result<()> {
 
         let msg_hwnd = create_message_window()?;
         tray::register(msg_hwnd)?;
+        media::set_notify_target(msg_hwnd);
         media::subscribe()?;
         flyout::create()?;
         hotkey::install(msg_hwnd)?;

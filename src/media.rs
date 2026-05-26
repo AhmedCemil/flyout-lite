@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicIsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
@@ -14,9 +15,42 @@ use windows::{
         TimelinePropertiesChangedEventArgs,
     },
     Storage::Streams::{Buffer, DataReader, IRandomAccessStreamWithContentType, InputStreamOptions},
+    Win32::{
+        Foundation::{HWND, LPARAM, WPARAM},
+        UI::WindowsAndMessaging::PostMessageW,
+    },
 };
 
 use crate::app;
+use crate::config;
+use crate::hotkey::WM_APP_HOTKEY;
+
+static NOTIFY_HWND: AtomicIsize = AtomicIsize::new(0);
+static LAST_TITLE: Mutex<String> = Mutex::new(String::new());
+static LAST_ARTIST: Mutex<String> = Mutex::new(String::new());
+static LAST_PLAYING: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
+
+pub fn set_notify_target(hwnd: HWND) {
+    NOTIFY_HWND.store(hwnd.0 as isize, Ordering::Release);
+}
+
+fn post_show_if_enabled() {
+    if !config::get().show_on_session_change {
+        return;
+    }
+    let target = NOTIFY_HWND.load(Ordering::Acquire);
+    if target == 0 {
+        return;
+    }
+    unsafe {
+        let _ = PostMessageW(
+            Some(HWND(target as *mut _)),
+            WM_APP_HOTKEY,
+            WPARAM(0),
+            LPARAM(0),
+        );
+    }
+}
 
 static MANAGER: OnceLock<Mutex<Option<GlobalSystemMediaTransportControlsSessionManager>>> =
     OnceLock::new();
@@ -110,7 +144,21 @@ fn refresh_properties(session: &GlobalSystemMediaTransportControlsSession) {
     let title = props.Title().unwrap_or_default().to_string_lossy();
     let artist = props.Artist().unwrap_or_default().to_string_lossy();
     let key = format!("{title}|{artist}");
+
+    let track_changed = {
+        let mut lt = LAST_TITLE.lock().unwrap();
+        let mut la = LAST_ARTIST.lock().unwrap();
+        let changed = (*lt != title || *la != artist) && !(title.is_empty() && artist.is_empty());
+        let first_seen = lt.is_empty() && la.is_empty();
+        *lt = title.clone();
+        *la = artist.clone();
+        changed && !first_seen
+    };
+
     app::update_track(title, artist);
+    if track_changed {
+        post_show_if_enabled();
+    }
 
     if let Ok(thumb_ref) = props.Thumbnail() {
         if let Ok(stream_op) = thumb_ref.OpenReadAsync() {
@@ -147,7 +195,14 @@ fn refresh_playback(session: &GlobalSystemMediaTransportControlsSession) {
     let Ok(info) = session.GetPlaybackInfo() else { return };
     let Ok(status) = info.PlaybackStatus() else { return };
     let playing = status == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing;
+
+    let prev = LAST_PLAYING.swap(playing as i8, Ordering::AcqRel);
+    let changed = prev != -1 && prev != (playing as i8);
+
     app::update_playing(playing);
+    if changed {
+        post_show_if_enabled();
+    }
 }
 
 fn refresh_timeline(session: &GlobalSystemMediaTransportControlsSession) {

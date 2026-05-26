@@ -48,6 +48,7 @@ pub struct Config {
     pub custom_y: i32,
     pub hold_ms: u32,
     pub compact: bool,
+    pub show_on_session_change: bool,
 }
 
 impl Default for Config {
@@ -60,6 +61,7 @@ impl Default for Config {
             custom_y: 100,
             hold_ms: 3000,
             compact: false,
+            show_on_session_change: true,
         }
     }
 }
@@ -111,6 +113,9 @@ fn load_or_default() -> Config {
             "custom_y" => cfg.custom_y = value.parse().unwrap_or(cfg.custom_y),
             "hold_ms" => cfg.hold_ms = value.parse().unwrap_or(cfg.hold_ms),
             "compact" => cfg.compact = value == "true" || value == "1",
+            "show_on_session_change" => {
+                cfg.show_on_session_change = value == "true" || value == "1"
+            }
             _ => {}
         }
     }
@@ -122,7 +127,7 @@ fn save(cfg: &Config) -> std::io::Result<()> {
         return Err(std::io::Error::new(std::io::ErrorKind::Other, "no APPDATA"));
     };
     let text = format!(
-        "anchor={}\nmargin_x={}\nmargin_y={}\ncustom_x={}\ncustom_y={}\nhold_ms={}\ncompact={}\n",
+        "anchor={}\nmargin_x={}\nmargin_y={}\ncustom_x={}\ncustom_y={}\nhold_ms={}\ncompact={}\nshow_on_session_change={}\n",
         cfg.anchor.as_str(),
         cfg.margin_x,
         cfg.margin_y,
@@ -130,6 +135,7 @@ fn save(cfg: &Config) -> std::io::Result<()> {
         cfg.custom_y,
         cfg.hold_ms,
         cfg.compact,
+        cfg.show_on_session_change,
     );
     fs::write(path, text)
 }
